@@ -21,4 +21,4 @@
 
 ## Project Summary
 
-This is a summary of the project!
+The U.S. Air Pollution Insight Platform is a web application dedicated to visualizing, analyzing, and interacting with pollution data from the U.S. spanning from 2000-2016. The platform will serve as a centralized hub to easily access insights into historical pollution trends for researchers, environmentalists, and concerned citizens. 
