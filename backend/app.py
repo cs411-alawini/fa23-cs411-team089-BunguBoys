@@ -1,9 +1,13 @@
 from flask import Flask
 from flask import request
+from flask_cors import CORS
 import pymysql.cursors
+from flask import jsonify
+
 import json
 
 app = Flask(__name__)
+CORS(app)
 
 # Connect to the database
 connection = pymysql.connect(host='34.69.173.235',
@@ -19,10 +23,34 @@ def make_where_clause(param_map):
     for key, value in param_map.items():
         if value is not None:
             csv = value.split(",")
-            if key == 'start_date' or key == 'gte_mean' or key == 'gte_aqi':
-                params.append(f"date >= '{value}'")
-            elif key == 'end_date' or key == 'lte_mean' or key == 'lte_aqi':
-                params.append(f"date <= '{value}'")
+            if key == 'start_date' or key == 'gte_mean' or key == 'gte_aqi' or key == 'gte_avg_mean' or key == 'gte_avg_aqi':
+                if key == 'start_data':
+                    other_key = "date"
+                elif key == 'gte_mean':
+                    other_key = "mean"
+                elif key == 'gte_aqi':
+                    other_key = "aqi"
+                elif key == 'gte_avg_mean':
+                    other_key = "avg_mean"
+                elif key == 'gte_avg_aqi':
+                    other_key = "avg_aqi"
+                else:
+                    other_key = "FAILURE"
+                params.append(f"{other_key} >= '{value}'")
+            elif key == 'end_date' or key == 'lte_mean' or key == 'lte_aqi' or key == 'lte_avg_mean' or key == 'lte_avg_aqi':
+                if key == 'start_data':
+                    other_key = "date"
+                elif key == 'lte_mean':
+                    other_key = "mean"
+                elif key == 'lte_aqi':
+                    other_key = "aqi"
+                elif key == 'lte_avg_mean':
+                    other_key = "avg_mean"
+                elif key == 'lte_avg_aqi':
+                    other_key = "avg_aqi"
+                else:
+                    other_key = "FAILURE"
+                params.append(f"{other_key} <= '{value}'")
             else:
                 if len(csv) == 1:
                     params.append(f"{key} = '{value}'")
@@ -47,10 +75,9 @@ def make_patch_set(param_map):
     for key, value in param_map.items():
         if value is not None:
             params.append(f"{key} = '{value}'")
-            patch_keys = ' , '.join(params)
-            if len(patch_keys) > 0:
-                return f"{patch_keys}"
-    return ''
+    patch_keys = ' , '.join(params)
+    if len(patch_keys) > 0:
+        return f"{patch_keys}"
 
 
 @app.route('/')
@@ -254,8 +281,8 @@ def get_data():  # put application's code here
         'gte_mean': request.args.get('gte_mean', None),
         'lte_mean': request.args.get('lte_mean', None),
         'aqi': request.args.get('mean', None),
-        'gte_aqi': request.args.get('gte_mean', None),
-        'lte_aqi': request.args.get('lte_mean', None),
+        'gte_aqi': request.args.get('gte_aqi', None),
+        'lte_aqi': request.args.get('lte_aqi', None),
     }
     query_where = make_where_clause(param_map)
     # print(query_where)
@@ -279,6 +306,28 @@ def get_compounds():  # put application's code here
     with connection.cursor() as cursor:
         # Read a single record
         sql = f"SELECT * FROM Compound {query_where}"
+        print(sql)
+        cursor.execute(sql)
+        result = cursor.fetchall()
+        print(result)
+    return result
+
+@app.route('/api/site_average/')  # @app.route(GET/api/states)
+def get_site_avg():  # put application's code here
+    param_map = {
+        'site_id': request.args.get('site_id', None),
+        'avg_mean': request.args.get('avg_mean', None),
+        'avg_aqi': request.args.get('avg_aqi', None),
+        'gte_avg_mean': request.args.get('gte_avg_mean', None),
+        'lte_avg_mean': request.args.get('lte_avg_mean', None),
+        'gte_avg_aqi': request.args.get('gte_avg_aqi', None),
+        'lte_avg_aqi': request.args.get('lte_avg_aqi', None),
+    }
+
+    query_where = make_where_clause(param_map)
+    with connection.cursor() as cursor:
+        # Read a single record
+        sql = f"SELECT * FROM Site_Avg {query_where}"
         print(sql)
         cursor.execute(sql)
         result = cursor.fetchall()
@@ -452,28 +501,33 @@ def add_site_region():
 
 @app.route('/api/measurement/', methods=['POST'])
 def add_measurement():
-    site_id = request.form.get("site_id", None)
-    compound_id = request.form.get("compound_id", None)
-    date = request.form.get("date", None)
-    parts_per = request.form.get("parts_per", None)
-    mean = request.form.get("mean", None)
-    max_value = request.form.get("max_value", None)
-    max_hour = request.form.get("max_hour", None)
-    aqi = request.form.get("aqi", None)
-
-    if site_id is None or compound_id is None or date is None:
-        return "Bad request", 400
+    data = request.get_json()
+    site_id = data.get("site_id", None)
+    compound_id = data.get("compound_id", None)
+    date = data.get("date", None)
+    parts_per = data.get("parts_per", None)
+    mean = data.get("mean", None)
+    max_value = data.get("max_value", None)
+    max_hour = data.get("max_hour", None)
+    aqi = data.get("aqi", None)
+    print(site_id, compound_id, date, parts_per, mean, max_value, max_hour, aqi)
+    if site_id is None:
+        return "Bad request: site id none", 401
+    if compound_id is None or date is None:
+        return "Bad request: compound id none", 401
+    if date is None:
+        return "Bad request: date none", 401
     with connection.cursor() as cursor:
         sql = f"SELECT * FROM Site WHERE id = {site_id}"
         cursor.execute(sql)
         result = cursor.fetchall()
         if len(result) == 0:
-            return "Invalid site", 400
+            return "Invalid site", 402
         sql = f"SELECT * FROM Compound WHERE id = {compound_id}"
         cursor.execute(sql)
         result = cursor.fetchall()
         if len(result) == 0:
-            return "Invalid compound", 400
+            return "Invalid compound", 403
         sql = (f"INSERT INTO Measurement(site_id, compound_id, date, parts_per, mean, max_value, max_hour, aqi) VALUES ({site_id}, {compound_id}, '{date}', {parts_per}, {mean}, {max_value}, {max_hour}, {aqi})")
         print(sql)
         cursor.execute(sql)
@@ -482,7 +536,7 @@ def add_measurement():
         # result = cursor.fetchall()
         # print(result)
         connection.commit()
-        return "Entry added", 201
+        return jsonify({"message": "Entry added"}), 200
 
 
 @app.route('/api/compound/', methods=['POST'])
@@ -760,23 +814,28 @@ def patch_region(region_id):
 
 @app.route('/api/measurement/<int:data_id>', methods=['PATCH'])
 def patch_measurement(data_id):
+    data = request.get_json()
     param_map = {
-        'compound_id': request.form.get("compound_id", None),
-        'date': request.form.get("date", None),
-        'parts_per': request.form.get("parts_per", None),
-        'mean': request.form.get("mean", None),
-        'max_value': request.form.get("max_value", None),
-        'max_hour': request.form.get("max_hour", None),
-        'aqi': request.form.get("aqi", None)
+        'compound_id': data.get("compound_id", None),
+        'date': data.get("date", None),
+        'parts_per': data.get("parts_per", None),
+        'mean': data.get("mean", None),
+        'max_value': data.get("max_value", None),
+        'max_hour': data.get("max_hour", None),
+        'aqi': data.get("aqi", None)
     }
+    print(param_map)
     patch_params = make_patch_set(param_map)
+    print(patch_params)
     where_params = make_where_clause(param_map)
     if len(patch_params) == 0:
         return "Bad request", 400
     with connection.cursor() as cursor:
         sql = f"SELECT * FROM Measurement WHERE id = {data_id}"
+        print(sql)
         cursor.execute(sql)
         result = cursor.fetchall()
+        print(result)
         if result.__len__() == 0:
             return "Entry did not exist", 400
         else:
@@ -784,11 +843,13 @@ def patch_measurement(data_id):
             print(sql)
             cursor.execute(sql)
             sql = f"SELECT * FROM Measurement {where_params}"
+            print(sql)
             cursor.execute(sql)
             result = cursor.fetchall()
             print(result)
             connection.commit()
-            return result, 201
+            # return jsonified result
+            return jsonify({"message": "Entry updated"}), 200
 
 
 @app.route('/api/compound/<int:compound_id>', methods=['PATCH'])
